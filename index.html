@@ -3588,6 +3588,20 @@ initCharts.wcan=()=>{
       const ma4=weeklyMA(teu,4);
       const ma8=weeklyMA(teu,8);
 
+      // Don't extend moving averages into the partial current week
+      // A partial week is the last entry whose Monday is within the current Mon-Sun period
+      if(weeks.length>1){
+        const lastMon=new Date(weeks[weeks.length-1]+'T12:00:00');
+        const now=new Date();
+        const todayMon=new Date(now);todayMon.setDate(now.getDate()-((now.getDay()+6)%7));
+        todayMon.setHours(0,0,0,0);
+        // If the last week's Monday is this current (incomplete) week, null out its MA
+        if(lastMon>=todayMon){
+          ma4[ma4.length-1]=null;
+          ma8[ma8.length-1]=null;
+        }
+      }
+
       const w=document.createElement('div');w.className='chart-section';
       w.innerHTML=`
         <div class="chart-section-header"><div>
