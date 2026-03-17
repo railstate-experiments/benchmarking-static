@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ethanol Cross-Border — RailState vs Census</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --border: #1e2840;
+    --rs: #00d4aa;
+    --census: #f5a623;
+    --text: #e8edf5;
+    --muted: #6b7a99;
+    --dim: #3a4460;
+    --red: #e25454;
+    --blue: #4a9eff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px; padding: 32px 48px;
+  }
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 32px; }
+  .section { margin-bottom: 48px; }
+  .section h2 {
+    font-size: 16px; font-weight: 600; margin-bottom: 4px;
+    border-bottom: 1px solid var(--border); padding-bottom: 8px;
+  }
+  .section .desc { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  .chart-container { position: relative; height: 340px; margin-bottom: 24px; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  th {
+    text-align: right; padding: 6px 12px; font-weight: 600;
+    border-bottom: 2px solid var(--border); color: var(--muted);
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  th:first-child { text-align: left; }
+  td {
+    text-align: right; padding: 5px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  td:first-child { text-align: left; color: var(--muted); }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .rs { color: var(--rs); }
+  .census { color: var(--census); }
+  .pos { color: var(--rs); }
+  .neg { color: var(--red); }
+  .total-row td { font-weight: 700; border-top: 2px solid var(--border); }
+  .legend { display: flex; gap: 24px; margin-bottom: 16px; font-size: 12px; }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Ethanol Cross-Border — RailState vs Census Comparison</h1>
+<div class="subtitle">
+  RailState: 9 US-Canada border crossings (UN1170 + UN3475 + UN1987) &nbsp;|&nbsp;
+  Census: HS 2207 exports to Canada &nbsp;|&nbsp;
+  714 barrels per car
+</div>
+
+<div class="section" id="total-section">
+  <h2>Total Ethanol (Census HS 2207 vs RailState All Placards)</h2>
+  <div class="desc">Census 2207.10 + 2207.20 exports to Canada vs RailState UN1170 + UN3475 + UN1987</div>
+  <div class="legend">
+    <span><div class="dot" style="background:var(--census)"></div> Census</span>
+    <span><div class="dot" style="background:var(--rs)"></div> RailState</span>
+  </div>
+  <div class="chart-container"><canvas id="totalChart"></canvas></div>
+  <table id="totalTable"></table>
+</div>
+
+<div class="section" id="dent-section">
+  <h2>Denatured Ethanol (Census HS 2207.20 vs RailState UN3475 + UN1987)</h2>
+  <div class="desc">The primary comparison — UN3475 is the dominant placard for ethanol entering Canada</div>
+  <div class="legend">
+    <span><div class="dot" style="background:var(--census)"></div> Census 2207.20</span>
+    <span><div class="dot" style="background:var(--rs)"></div> RailState UN3475+UN1987</span>
+  </div>
+  <div class="chart-container"><canvas id="dentChart"></canvas></div>
+  <table id="dentTable"></table>
+</div>
+
+<div class="section" id="undent-section">
+  <h2>Undenatured Ethanol (Census HS 2207.10 vs RailState UN1170)</h2>
+  <div class="desc">Small volumes — RailState significantly exceeds Census, suggesting UN1170 is consumed domestically in Canada</div>
+  <div class="legend">
+    <span><div class="dot" style="background:var(--census)"></div> Census 2207.10</span>
+    <span><div class="dot" style="background:var(--rs)"></div> RailState UN1170</span>
+  </div>
+  <div class="chart-container"><canvas id="undentChart"></canvas></div>
+  <table id="undentTable"></table>
+</div>
+
+<script>
+fetch('data/ethanol_xb_report.json')
+  .then(r => r.json())
+  .then(data => {
+    const rows = data.monthly_comparison.rows;
+
+    // Extract data where both Census and RS exist
+    const months = [], cenUndent = [], cenDent = [], cenTotal = [];
+    const rsUndent = [], rsDent = [], rsTotal = [];
+    const rsUndentCars = [], rsDentCars = [], rsTotalCars = [];
+    const rs3475Cars = [], rs1987Cars = [];
+
+    rows.forEach(r => {
+      const [month, cu, cd, ct, ruCars, ruBbl, rdCars, rdBbl, rtCars, rtBbl] = r;
+      if (month < '2024-01' || month > '2026-01') return;
+      months.push(month);
+      cenUndent.push(cu); cenDent.push(cd); cenTotal.push(ct);
+      rsUndent.push(ruBbl); rsDent.push(rdBbl); rsTotal.push(rtBbl);
+      rsUndentCars.push(ruCars); rsDentCars.push(rdCars); rsTotalCars.push(rtCars);
+    });
+
+    const fmt = v => v == null ? '—' : v.toLocaleString();
+    const pct = (a, b) => (a == null || b == null || b === 0) ? '—' : (a / b * 100).toFixed(1) + '%';
+    const diffClass = v => v == null ? '' : v >= 0 ? 'pos' : 'neg';
+
+    function makeChart(id, labels, censusData, rsData, label1, label2) {
+      new Chart(document.getElementById(id), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: label1, data: censusData,
+              backgroundColor: 'rgba(245,166,35,0.7)', borderColor: '#f5a623',
+              borderWidth: 1, borderRadius: 2,
+            },
+            {
+              label: label2, data: rsData,
+              backgroundColor: 'rgba(0,212,170,0.7)', borderColor: '#00d4aa',
+              borderWidth: 1, borderRadius: 2,
+            }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: '#6b7a99', font: { size: 11 } } },
+            tooltip: {
+              callbacks: {
+                label: ctx => ctx.dataset.label + ': ' + (ctx.raw || 0).toLocaleString() + ' bbl'
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: '#6b7a99', font: { size: 10 } }, grid: { color: '#1e2840' } },
+            y: {
+              ticks: {
+                color: '#6b7a99', font: { size: 10 },
+                callback: v => (v / 1e6).toFixed(1) + 'M'
+              },
+              grid: { color: '#1e2840' }
+            }
+          }
+        }
+      });
+    }
+
+    function makeTable(id, months, censusData, rsData, rsCarsData) {
+      let html = '<tr><th>Month</th><th>Census (bbl)</th><th>RS Cars</th><th>RS (bbl)</th><th>Difference</th><th>RS/Census</th></tr>';
+      let tc = 0, tr = 0, tCars = 0;
+      months.forEach((m, i) => {
+        const c = censusData[i], r = rsData[i], cars = rsCarsData[i];
+        const diff = (r != null && c != null) ? r - c : null;
+        const ratio = pct(r, c);
+        if (c != null) tc += c;
+        if (r != null) { tr += r; tCars += (cars || 0); }
+        html += `<tr>
+          <td>${m}</td>
+          <td class="census">${fmt(c)}</td>
+          <td>${cars != null ? cars.toLocaleString() : '—'}</td>
+          <td class="rs">${fmt(r)}</td>
+          <td class="${diffClass(diff)}">${diff != null ? (diff >= 0 ? '+' : '') + diff.toLocaleString() : '—'}</td>
+          <td>${ratio}</td>
+        </tr>`;
+      });
+      const tDiff = tr - tc;
+      html += `<tr class="total-row">
+        <td>TOTAL</td>
+        <td class="census">${tc.toLocaleString()}</td>
+        <td>${tCars.toLocaleString()}</td>
+        <td class="rs">${tr.toLocaleString()}</td>
+        <td class="${diffClass(tDiff)}">${(tDiff >= 0 ? '+' : '') + tDiff.toLocaleString()}</td>
+        <td>${(tr / tc * 100).toFixed(1)}%</td>
+      </tr>`;
+      document.getElementById(id).innerHTML = html;
+    }
+
+    makeChart('totalChart', months, cenTotal, rsTotal, 'Census HS 2207', 'RailState');
+    makeTable('totalTable', months, cenTotal, rsTotal, rsTotalCars);
+
+    makeChart('dentChart', months, cenDent, rsDent, 'Census 2207.20', 'RS UN3475+UN1987');
+    makeTable('dentTable', months, cenDent, rsDent, rsDentCars);
+
+    makeChart('undentChart', months, cenUndent, rsUndent, 'Census 2207.10', 'RS UN1170');
+    makeTable('undentTable', months, cenUndent, rsUndent, rsUndentCars);
+  });
+</script>
+</body>
+</html>
